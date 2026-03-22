@@ -1,0 +1,138 @@
+{
+  "$schemaVersion": 1,
+  "componentName": "my-skill",
+  "repo": "acme/my-skill",
+  "releaseChannel": "releases",
+  "currentVersionSource": {
+    "type": "package.json",
+    "path": "./package.json"
+  },
+  "candidateVersionSource": {
+    "type": "file",
+    "path": "./.update-kit/candidate-version.txt"
+  },
+  "installStrategy": {
+    "type": "custom_command",
+    "command": [
+      "bash",
+      "-lc",
+      "./scripts/install-update.sh {version}"
+    ],
+    "timeoutMs": 120000
+  },
+  "installCommand": [
+    "bash",
+    "-lc",
+    "./scripts/install-update.sh {version}"
+  ],
+  "switchCommand": [
+    "bash",
+    "-lc",
+    "./scripts/switch-release.sh {version}"
+  ],
+  "rollbackCommand": [
+    "bash",
+    "-lc",
+    "./scripts/rollback-release.sh {targetVersion}"
+  ],
+  "statePath": "./.update-kit/state.json",
+  "auditLogPath": "./.update-kit/audit.log",
+  "lockPath": "./.update-kit/update.lock",
+  "autoUpdatePolicy": "patch",
+  "allowedUpdateLevels": [
+    "patch",
+    "minor"
+  ],
+  "ignoredVersions": [],
+  "preflightHooks": [
+    {
+      "type": "builtin",
+      "builtin": "command_exists",
+      "value": "git",
+      "description": "Verify git is available"
+    },
+    {
+      "type": "builtin",
+      "builtin": "path_exists",
+      "value": "./scripts/install-update.sh",
+      "description": "Install script must exist"
+    }
+  ],
+  "migrationHooks": [
+    {
+      "type": "command",
+      "command": [
+        "bash",
+        "-lc",
+        "./scripts/migrate.sh {version}"
+      ],
+      "description": "Run migrations after install"
+    }
+  ],
+  "compatibilityHooks": [
+    {
+      "type": "command",
+      "command": [
+        "bash",
+        "-lc",
+        "./scripts/compat-check.sh {version}"
+      ],
+      "description": "Run compatibility checks before switch"
+    }
+  ],
+  "verificationHooks": [
+    {
+      "type": "command",
+      "command": [
+        "bash",
+        "-lc",
+        "./scripts/verify-pre-switch.sh {version}"
+      ],
+      "description": "Verify candidate before switch",
+      "phase": "before_switch"
+    },
+    {
+      "type": "command",
+      "command": [
+        "bash",
+        "-lc",
+        "./scripts/verify-post-switch.sh {version}"
+      ],
+      "description": "Verify runtime health after switch",
+      "phase": "after_switch"
+    }
+  ],
+  "updateInstructions": {
+    "summary": "Install upstream update into the host environment and verify health before activation.",
+    "docsUrl": "https://github.com/acme/my-skill/releases",
+    "installHint": "Use update-kit apply --manifest ./update.config.json"
+  },
+  "privacyRules": {
+    "redactPatterns": [
+      "ghp_[A-Za-z0-9]+",
+      "Bearer\\s+[A-Za-z0-9._-]+"
+    ],
+    "redactValues": [
+      "my-secret-token"
+    ],
+    "replacement": "[REDACTED]"
+  },
+  "timeouts": {
+    "detectionMs": 10000,
+    "confirmMs": 30000,
+    "installMs": 120000,
+    "hookMs": 60000,
+    "switchMs": 60000,
+    "rollbackMs": 120000
+  },
+  "retryPolicy": {
+    "retries": 2,
+    "backoffMs": 500,
+    "factor": 2
+  },
+  "github": {
+    "apiBaseUrl": "https://api.github.com",
+    "tokenEnv": "GITHUB_TOKEN",
+    "includePrerelease": false
+  }
+}

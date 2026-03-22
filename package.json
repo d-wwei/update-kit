@@ -1,0 +1,57 @@
+{
+  "name": "update-kit",
+  "version": "1.0.0",
+  "description": "Production-grade, embeddable update orchestration framework with policy, verification, rollback, and auditability.",
+  "keywords": [
+    "update",
+    "autoupdate",
+    "orchestration",
+    "rollback",
+    "audit",
+    "typescript",
+    "cli",
+    "sdk"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/d-wwei/update-kit.git"
+  },
+  "homepage": "https://github.com/d-wwei/update-kit",
+  "bugs": {
+    "url": "https://github.com/d-wwei/update-kit/issues"
+  },
+  "type": "module",
+  "bin": {
+    "update-kit": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./adapter": {
+      "types": "./dist/adapter.d.ts",
+      "import": "./dist/adapter.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "update.config.example.json",
+    "docs/INTEGRATION.md",
+    "examples/node-ts"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "tsx --test tests/**/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}

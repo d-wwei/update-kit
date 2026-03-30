@@ -212,6 +212,18 @@ export type UpdatePolicy = {
   allowedUpdateLevels?: Array<"patch" | "minor" | "major">;
 };
 
+export type CacheConfig = {
+  upToDateTtlMs?: number;
+  upgradeAvailableTtlMs?: number;
+  cachePath?: string;
+};
+
+export type SnoozeState = {
+  version: string;
+  level: number;
+  snoozedAt: string;
+};
+
 export type UpdateInstructions = {
   summary?: string;
   docsUrl?: string;
@@ -253,6 +265,9 @@ export type UpdateManifest = {
     rateLimitRetries?: number;
     maxRateLimitWaitMs?: number;
   };
+  updateCheckEnabled?: boolean;
+  cache?: CacheConfig;
+  snoozeDurations?: number[];
 };
 
 export type UpdateManifestOverrides = Partial<UpdateManifest>;
@@ -503,6 +518,8 @@ export type UpdateState = {
   lastSuccessfulAt?: string;
   lastFailedAt?: string;
   lastFailureReason?: string;
+  snooze?: SnoozeState;
+  justUpgradedFrom?: string;
   updatedAt: string;
 };
 
@@ -585,6 +602,7 @@ export type PlanOptions = AdapterContextOverrides & {
 export type ApplyOptions = AdapterContextOverrides & {
   dryRun?: boolean;
   decision?: "update_once" | "always_auto_update" | "skip_this_time" | "ignore_this_version";
+  preChecked?: UpdateCheckResult;
 };
 
 export type RollbackOptions = AdapterContextOverrides & {
@@ -595,4 +613,32 @@ export type RollbackOptions = AdapterContextOverrides & {
 
 export type GetAuditOptions = AdapterContextOverrides & {
   limit?: number;
+};
+
+export type QuickCheckStatus =
+  | "up_to_date"
+  | "upgrade_available"
+  | "just_upgraded"
+  | "snoozed"
+  | "disabled"
+  | "error";
+
+export type QuickCheckResult = {
+  status: QuickCheckStatus;
+  currentVersion?: string;
+  candidateVersion?: string;
+  previousVersion?: string;
+  snoozeLevel?: number;
+  snoozeExpiresAt?: string;
+  cachedAt?: string;
+  message: string;
+};
+
+export type QuickCheckOptions = AdapterContextOverrides & {
+  force?: boolean;
+  softFail?: boolean;
+};
+
+export type SnoozeOptions = AdapterContextOverrides & {
+  version?: string;
 };

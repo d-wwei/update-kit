@@ -57,6 +57,11 @@
 - 结构化 JSONL 审计
 - 状态持久化
 - update lock
+- **quickCheck**: 缓存优先的轻量检查，适合 agent preamble（<5ms）
+- **渐进式 snooze**: 24h → 48h → 7d 递增退避，新版本自动重置
+- **just-upgraded marker**: 升级后一次性反馈
+- **soft-fail**: 网络失败返回 up_to_date 而非抛错
+- **kill switch**: `updateCheckEnabled: false` 一键关闭
 - SDK + CLI
 
 ## 默认自动发现接入
@@ -120,6 +125,8 @@ npm install update-kit
 - `runtime.setPolicy(adapter, mode, options?)`
 - `runtime.ignoreVersion(adapter, version, options?)`
 - `runtime.unignoreVersion(adapter, version, options?)`
+- `runtime.quickCheck(adapter, options?)`
+- `runtime.snooze(adapter, options?)`
 - `defineAdapter(...)`
 
 ## 最小 Node/TS 示例
@@ -157,7 +164,8 @@ if (summary.hasUpdate) {
 
 ```bash
 update-kit bootstrap --cwd . --json
-update-kit check --cwd .
+update-kit check --cwd . [--force]
+update-kit quick-check --cwd . [--force]
 update-kit plan --cwd . --dry-run
 update-kit apply --cwd .
 update-kit rollback --cwd .
@@ -166,6 +174,7 @@ update-kit audit --cwd .
 update-kit policy --cwd .
 update-kit ignore --cwd . --version 1.2.3
 update-kit unignore --cwd . --version 1.2.3
+update-kit snooze --cwd . [--version 1.2.3]
 update-kit set-policy --cwd . --mode manual
 ```
 
@@ -177,6 +186,7 @@ CLI 特性：
 - `--cwd` 指定宿主目录
 - manifest 缺失时默认自动发现
 - `--dry-run` 做执行预演
+- `--force` 绕过缓存强制检查
 - 失败时返回非 0 exit code
 
 ## Manifest
@@ -248,9 +258,29 @@ GitHub 检测层现在支持：
 }
 ```
 
+## Quick Check（Agent 友好）
+
+`quickCheck()` 是为 agent preamble 和高频调用场景设计的轻量检查：
+
+- 缓存命中时无网络请求（<5ms）
+- 两级 TTL：up_to_date 60min，upgrade_available 12h
+- 渐进式 snooze：24h → 48h → 7d
+- 升级后一次性 just-upgraded 反馈
+- soft-fail：网络故障返回 up_to_date
+- kill switch：`updateCheckEnabled: false`
+
+```ts
+const result = await runtime.quickCheck(adapter);
+// result.status: "up_to_date" | "upgrade_available" | "just_upgraded" | "snoozed" | "disabled"
+```
+
+详见 [Agent 集成指南](./docs/AGENT_INTEGRATION.md)。
+
 ## 文档
 
-- [集成指南](./docs/INTEGRATION.md)
+- [快速接入指南](./docs/QUICK_START.md) — agent 可直接执行的逐步接入指南
+- [Agent 集成指南](./docs/AGENT_INTEGRATION.md) — quickCheck 设计原理与调参
+- [集成指南](./docs/INTEGRATION.md) — 完整 SDK 接入与高级配置
 - [English README](./README.md)
 
 ## 当前测试覆盖
@@ -281,6 +311,14 @@ GitHub 检测层现在支持：
 - GitHub 分页与限流重试
 - HTTP 分布式后端
 - archive checksum 与解包验证
+- quickCheck 缓存 TTL 和两级过期
+- 渐进式 snooze 递进和过期
+- just-upgraded marker 生命周期
+- kill switch（updateCheckEnabled）
+- soft-fail 网络错误
+- quickCheck 缓存因版本变更失效
+- quickCheck --force 绕过缓存
+- CLI quick-check / snooze
 
 ## 开发
 

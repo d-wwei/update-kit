@@ -71,7 +71,13 @@ export function normalizeManifest(manifest: UpdateManifest, cwd: string): Update
     preflightHooks: normalizeHooks(manifest.preflightHooks, cwd),
     migrationHooks: normalizeHooks(manifest.migrationHooks, cwd),
     compatibilityHooks: normalizeHooks(manifest.compatibilityHooks, cwd),
-    verificationHooks: normalizeHooks(manifest.verificationHooks, cwd)
+    verificationHooks: normalizeHooks(manifest.verificationHooks, cwd),
+    cache: manifest.cache
+      ? {
+          ...manifest.cache,
+          cachePath: manifest.cache.cachePath ? (resolveFromCwd(cwd, manifest.cache.cachePath) ?? manifest.cache.cachePath) : undefined
+        }
+      : undefined
   };
 }
 

@@ -7,7 +7,12 @@ export async function githubJson<T>(
   fetchImpl: typeof fetch
 ): Promise<T> {
   const response = await githubRequest(url, manifest, fetchImpl);
-  return await response.json() as T;
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`GitHub API returned non-JSON response from ${url}: ${text.slice(0, 200)}`);
+  }
 }
 
 export async function githubPaginated<T>(
@@ -22,7 +27,13 @@ export async function githubPaginated<T>(
 
   while (nextUrl && page < maxPages) {
     const response = await githubRequest(nextUrl, manifest, fetchImpl);
-    const json = await response.json() as T[];
+    const text = await response.text();
+    let json: T[];
+    try {
+      json = JSON.parse(text) as T[];
+    } catch {
+      throw new Error(`GitHub API returned non-JSON response from ${nextUrl}: ${text.slice(0, 200)}`);
+    }
     output.push(...json);
     nextUrl = parseNextLink(response.headers.get("link"));
     page += 1;

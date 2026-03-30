@@ -1,6 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -271,8 +270,4 @@ type PackageJson = {
 
 function extractTomlValue(raw: string, key: string): string | undefined {
   return raw.match(new RegExp(`^${key}\\s*=\\s*["']([^"']+)["']`, "m"))?.[1];
-}
-
-export function defaultDistributedNamespace(componentName: string): string {
-  return path.join(os.userInfo().username, componentName).replace(/[\\/]+/g, "-");
 }

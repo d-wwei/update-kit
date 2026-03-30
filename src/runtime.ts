@@ -1,4 +1,5 @@
 import { resolveAdapterContext } from "./adapter.js";
+import { createUpdateCheckCache } from "./cache.js";
 import { detectCurrentVersion, detectLocalCandidateVersion, detectUpdateCandidate } from "./detector.js";
 import { filterVerificationHooks, runHooks } from "./hooks.js";
 import { executeInstall } from "./installer.js";
@@ -12,8 +13,9 @@ import {
   widenPolicyMode
 } from "./policy.js";
 import { executeRollback } from "./rollback.js";
-import { executeSwitch } from "./switcher.js";
+import { advanceSnooze, computeSnoozeExpiry, isSnoozeActive } from "./snooze.js";
 import { ensureState, touchState } from "./state.js";
+import { executeSwitch } from "./switcher.js";
 import type {
   AdapterContextOverrides,
   ApplyOptions,
@@ -25,11 +27,14 @@ import type {
   GetAuditOptions,
   PlanOptions,
   PreflightResult,
+  QuickCheckOptions,
+  QuickCheckResult,
   ResolvedAdapterContext,
   RollbackOptions,
   RollbackResult,
   RuntimeOptions,
   ResolvedManifestInfo,
+  SnoozeOptions,
   UpdateAdapter,
   UpdateCandidate,
   UpdateCheckResult,
@@ -81,6 +86,110 @@ export class UpdateRuntime {
     return prepared.checkResult;
   }
 
+  async quickCheck(adapter: UpdateAdapter, options: QuickCheckOptions = {}): Promise<QuickCheckResult> {
+    if (this.manifest.updateCheckEnabled === false) {
+      return { status: "disabled", message: "Update checking is disabled." };
+    }
+
+    const softFail = options.softFail ?? true;
+
+    try {
+      const resolved = await resolveAdapterContext(adapter, this.manifest, options);
+      const state = await ensureState(resolved.stateStore, this.manifest, resolved);
+      const currentVersion = await detectCurrentVersion(resolved, this.manifest);
+
+      if (state.justUpgradedFrom) {
+        const previousVersion = state.justUpgradedFrom;
+        const nextState = touchState(state, { justUpgradedFrom: undefined });
+        await resolved.stateStore.write(nextState);
+        return {
+          status: "just_upgraded",
+          currentVersion,
+          previousVersion,
+          message: `Just upgraded from ${previousVersion} to ${currentVersion}.`
+        };
+      }
+
+      if (state.snooze && isSnoozeActive(state.snooze, this.manifest.snoozeDurations)) {
+        return {
+          status: "snoozed",
+          currentVersion,
+          candidateVersion: state.snooze.version,
+          snoozeLevel: state.snooze.level,
+          snoozeExpiresAt: computeSnoozeExpiry(state.snooze, this.manifest.snoozeDurations).toISOString(),
+          message: `Version ${state.snooze.version} is snoozed (level ${state.snooze.level}).`
+        };
+      }
+
+      const cache = createUpdateCheckCache(this.manifest, this.cwd);
+      if (!options.force) {
+        const cached = await cache.read();
+        if (cached && cache.isFresh(cached, currentVersion, this.manifest.cache)) {
+          return {
+            status: cached.status,
+            currentVersion: cached.currentVersion,
+            candidateVersion: cached.candidateVersion,
+            cachedAt: cached.cachedAt,
+            message: cached.status === "up_to_date"
+              ? `Up to date at ${cached.currentVersion} (cached).`
+              : `Update available: ${cached.candidateVersion} (cached).`
+          };
+        }
+      } else {
+        await cache.invalidate();
+      }
+
+      const detection = await detectUpdateCandidate(resolved, this.manifest, resolved.fetchImpl);
+
+      let updatedState = touchState(state, {
+        candidateVersion: detection.candidate?.version,
+        lastCheckedAt: new Date().toISOString()
+      });
+
+      if (state.snooze && detection.candidate && state.snooze.version !== detection.candidate.version) {
+        updatedState = touchState(updatedState, { snooze: undefined });
+      }
+
+      await resolved.stateStore.write(updatedState);
+
+      await cache.write({
+        status: detection.summary.hasUpdate ? "upgrade_available" : "up_to_date",
+        currentVersion: detection.summary.currentVersion,
+        candidateVersion: detection.candidate?.version,
+        cachedAt: new Date().toISOString(),
+        localVersionAtCache: currentVersion
+      });
+
+      return {
+        status: detection.summary.hasUpdate ? "upgrade_available" : "up_to_date",
+        currentVersion: detection.summary.currentVersion,
+        candidateVersion: detection.candidate?.version,
+        message: detection.summary.message
+      };
+    } catch (error) {
+      if (softFail) {
+        return {
+          status: "error",
+          message: `Check failed (soft): ${error instanceof Error ? error.message : String(error)}`
+        };
+      }
+      throw error;
+    }
+  }
+
+  async snooze(adapter: UpdateAdapter, options: SnoozeOptions = {}): Promise<UpdateState> {
+    const resolved = await resolveAdapterContext(adapter, this.manifest, options);
+    const state = await ensureState(resolved.stateStore, this.manifest, resolved);
+    const targetVersion = options.version ?? state.candidateVersion;
+    if (!targetVersion) {
+      throw new Error("No version to snooze. Provide a version or run check first.");
+    }
+    const nextSnooze = advanceSnooze(state.snooze, targetVersion);
+    const nextState = touchState(state, { snooze: nextSnooze });
+    await resolved.stateStore.write(nextState);
+    return nextState;
+  }
+
   async plan(adapter: UpdateAdapter, options: PlanOptions = {}): Promise<UpdatePlan> {
     const prepared = await this.prepare(adapter, options);
     const decision = options.decision ?? decisionFromPolicy(
@@ -102,7 +211,9 @@ export class UpdateRuntime {
   }
 
   async apply(adapter: UpdateAdapter, options: ApplyOptions = {}): Promise<ApplyResult> {
-    const prepared = await this.prepare(adapter, options);
+    const prepared = options.preChecked
+      ? await this.prepareFromCheckResult(adapter, options, options.preChecked)
+      : await this.prepare(adapter, options);
     const executionId = createId("apply");
     let state = this.buildDetectionState(prepared);
     const dryRun = options.dryRun ?? false;
@@ -112,7 +223,6 @@ export class UpdateRuntime {
         executionId,
         currentVersion: prepared.currentVersion
       });
-      await prepared.resolved.stateStore.write(state);
       await this.writeAudit(prepared.resolved, "detection_completed", "completed", "Update detection completed.", {
         executionId,
         currentVersion: prepared.currentVersion,
@@ -510,6 +620,8 @@ export class UpdateRuntime {
         lastSuccessfulVersion: prepared.candidate?.version,
         lastSuccessfulAt: new Date().toISOString(),
         lastFailureReason: undefined,
+        justUpgradedFrom: prepared.currentVersion,
+        snooze: undefined,
         lastExecution: {
           id: executionId,
           status: "succeeded",
@@ -678,6 +790,23 @@ export class UpdateRuntime {
     });
     await resolved.stateStore.write(nextState);
     return nextState;
+  }
+
+  private async prepareFromCheckResult(
+    adapter: UpdateAdapter,
+    options: AdapterContextOverrides,
+    checkResult: UpdateCheckResult
+  ): Promise<PreparedSession> {
+    const resolved = await resolveAdapterContext(adapter, this.manifest, options);
+    const state = await ensureState(resolved.stateStore, this.manifest, resolved);
+    return {
+      resolved,
+      state,
+      currentVersion: checkResult.currentVersion,
+      localCandidateVersion: checkResult.localCandidateVersion,
+      candidate: checkResult.candidate,
+      checkResult
+    };
   }
 
   private async prepare(

@@ -134,5 +134,11 @@
     "apiBaseUrl": "https://api.github.com",
     "tokenEnv": "GITHUB_TOKEN",
     "includePrerelease": false
-  }
+  },
+  "updateCheckEnabled": true,
+  "cache": {
+    "upToDateTtlMs": 3600000,
+    "upgradeAvailableTtlMs": 43200000
+  },
+  "snoozeDurations": [86400000, 172800000, 604800000]
 }

@@ -95,7 +95,7 @@ export async function detectUpdateCandidate(
   const now = new Date().toISOString();
   const latest = manifest.releaseChannel === "releases"
     ? await fetchLatestReleaseCandidate(manifest.repo, manifest, fetchImpl)
-    : await fetchLatestTagCandidate(manifest.repo, manifest, fetchImpl);
+    : await fetchLatestTagCandidate(manifest.repo, manifest, fetchImpl, currentVersion);
 
   if (!latest) {
     return {
@@ -185,7 +185,8 @@ async function fetchLatestReleaseCandidate(
 async function fetchLatestTagCandidate(
   repo: string,
   manifest: UpdateManifest,
-  fetchImpl: typeof fetch
+  fetchImpl: typeof fetch,
+  currentVersion?: string
 ): Promise<{
   ref: string;
   releaseUrl?: string;
@@ -205,7 +206,7 @@ async function fetchLatestTagCandidate(
 
   if (!latest) return undefined;
 
-  const compare = await fetchCompare(repo, manifest, fetchImpl, latest);
+  const compare = await fetchCompare(repo, manifest, fetchImpl, latest, currentVersion);
   const { owner, repo: repoName } = splitRepo(repo);
   const compareUrl = compare?.html_url ?? `https://github.com/${owner}/${repoName}/releases/tag/${latest}`;
   return {
@@ -223,11 +224,12 @@ async function fetchCompare(
   repo: string,
   manifest: UpdateManifest,
   fetchImpl: typeof fetch,
-  latestRef: string
+  latestRef: string,
+  currentVersion?: string
 ): Promise<GithubCompare | undefined> {
-  const normalized = normalizeVersion(latestRef);
-  const refs = [normalized, `v${normalized}`];
-  for (const base of refs) {
+  if (!currentVersion) return undefined;
+  const bases = [`v${currentVersion}`, currentVersion];
+  for (const base of bases) {
     try {
       return await githubJson<GithubCompare>(
         `${apiBaseUrl(manifest)}/repos/${repo}/compare/${base}...${latestRef}`,

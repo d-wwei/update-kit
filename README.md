@@ -120,6 +120,8 @@ npm install update-kit
 - `runtime.setPolicy(adapter, mode, options?)`
 - `runtime.ignoreVersion(adapter, version, options?)`
 - `runtime.unignoreVersion(adapter, version, options?)`
+- `runtime.quickCheck(adapter, options?)`
+- `runtime.snooze(adapter, options?)`
 - `defineAdapter(...)`
 
 ## Minimal Node/TS Example
@@ -157,7 +159,8 @@ See [examples/node-ts/index.ts](./examples/node-ts/index.ts).
 
 ```bash
 update-kit bootstrap --cwd . --json
-update-kit check --cwd .
+update-kit check --cwd . [--force]
+update-kit quick-check --cwd . [--force]
 update-kit plan --cwd . --dry-run
 update-kit apply --cwd .
 update-kit rollback --cwd .
@@ -166,6 +169,7 @@ update-kit audit --cwd .
 update-kit policy --cwd .
 update-kit ignore --cwd . --version 1.2.3
 update-kit unignore --cwd . --version 1.2.3
+update-kit snooze --cwd . [--version 1.2.3]
 update-kit set-policy --cwd . --mode manual
 ```
 
@@ -178,6 +182,25 @@ CLI behavior:
 - autodetect when a manifest is missing
 - `--dry-run` for execution preview
 - non-zero exit code on failure
+- `--force` to bypass cache on check/quick-check
+
+## Quick Check (Agent-Friendly)
+
+`quickCheck()` is a cache-first, lightweight update check designed for agent preambles and high-frequency invocations:
+
+- Returns from cache within TTL (no network, <5ms)
+- Two-level TTL: up_to_date 60min, upgrade_available 12h
+- Progressive snooze: 24h -> 48h -> 7d
+- Just-upgraded marker after successful updates
+- Soft-fail: network errors return "up_to_date" instead of throwing
+- Kill switch via `updateCheckEnabled: false`
+
+```ts
+const result = await runtime.quickCheck(adapter);
+// result.status: "up_to_date" | "upgrade_available" | "just_upgraded" | "snoozed" | "disabled"
+```
+
+See [Agent Integration Guide](./docs/AGENT_INTEGRATION.md) for patterns.
 
 ## Manifest
 
@@ -250,7 +273,9 @@ Recommended shape:
 
 ## Docs
 
-- [Integration guide](./docs/INTEGRATION.md)
+- [Quick Start](./docs/QUICK_START.md) — step-by-step integration guide agents can execute directly
+- [Agent Integration Guide](./docs/AGENT_INTEGRATION.md) — quickCheck design and tuning
+- [Integration guide](./docs/INTEGRATION.md) — full SDK integration and advanced config
 - [Chinese README](./README.zh-CN.md)
 
 ## Test Coverage
@@ -281,6 +306,14 @@ The current test suite covers:
 - GitHub pagination and rate-limit retries
 - HTTP distributed backends
 - archive checksum and extraction validation
+- quickCheck cache TTL and two-level expiry
+- progressive snooze advancement and expiry
+- just-upgraded marker lifecycle
+- kill switch (updateCheckEnabled)
+- soft-fail on network error
+- cache invalidation on version change
+- quickCheck --force cache bypass
+- CLI quick-check / snooze commands
 
 ## Development
 

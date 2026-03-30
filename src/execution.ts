@@ -4,12 +4,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import type {
   CommandExecutionResult,
   ExecutionOperation,
-  JsonValue,
   ResolvedAdapterContext,
   UpdateCandidate,
   UpdateManifest
 } from "./types.js";
-import { formatCommand, redactText, renderCommandTemplate, renderTemplate, runWithRetry } from "./utils.js";
+import { redactText, renderCommandTemplate, renderTemplate, runWithRetry } from "./utils.js";
 
 export function buildTemplateVariables(
   host: Pick<ResolvedAdapterContext, "cwd" | "appName" | "componentName">,
@@ -86,26 +85,4 @@ export async function executeOperations(params: {
   }
 
   return outputs;
-}
-
-export function operationToMetadata(operation: ExecutionOperation): Record<string, JsonValue> {
-  if (operation.kind === "command") {
-    return {
-      kind: operation.kind,
-      description: operation.description,
-      command: formatCommand({ command: operation.command, shell: operation.shell })
-    };
-  }
-  if (operation.kind === "download") {
-    return {
-      kind: operation.kind,
-      description: operation.description,
-      url: operation.url,
-      destination: operation.destination
-    };
-  }
-  return {
-    kind: operation.kind,
-    description: operation.description
-  };
 }

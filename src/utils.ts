@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import type {
-  CommandExecutionRequest,
   JsonValue,
   PrivacyRules,
   RetryPolicy,
@@ -157,17 +156,6 @@ export function renderCommandTemplate(
 ): string | string[] {
   if (typeof command === "string") return renderTemplate(command, variables);
   return command.map((part) => renderTemplate(part, variables));
-}
-
-export function formatCommand(request: Pick<CommandExecutionRequest, "command" | "shell">): string {
-  const command = request.command;
-  if (typeof command === "string") return command;
-  return command.map((token) => quoteForShell(token)).join(" ");
-}
-
-export function quoteForShell(token: string): string {
-  if (/^[A-Za-z0-9_./:@=-]+$/.test(token)) return token;
-  return `'${token.replace(/'/g, `'\\''`)}'`;
 }
 
 export function takeNonEmptyLines(input: string, limit = 5): string[] {

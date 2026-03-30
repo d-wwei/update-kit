@@ -6,7 +6,22 @@ import { createInterface } from "node:readline/promises";
 import { bootstrapManifest } from "./autodetect.js";
 import { defineAdapter } from "./adapter.js";
 import { createRuntime } from "./runtime.js";
-import type { ConfirmHandler, UpdateConfirmationPrompt, UpdateDecision, UpdatePolicyMode } from "./types.js";
+import type {
+  ApplyResult,
+  AuditRecord,
+  ConfirmHandler,
+  QuickCheckResult,
+  ResolvedManifestInfo,
+  RollbackResult,
+  UpdateCheckResult,
+  UpdateConfirmationPrompt,
+  UpdateDecision,
+  UpdateManifest,
+  UpdatePlan,
+  UpdatePolicy,
+  UpdatePolicyMode,
+  UpdateState
+} from "./types.js";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -36,8 +51,29 @@ async function main(): Promise<void> {
 
   try {
     if (command === "check") {
+      if (flags.force) {
+        const { createUpdateCheckCache } = await import("./cache.js");
+        const cache = createUpdateCheckCache(runtime.manifest, cwd);
+        await cache.invalidate();
+      }
       const result = await runtime.check(adapter);
       print(result, json, renderCheck);
+      return;
+    }
+
+    if (command === "quick-check") {
+      const result = await runtime.quickCheck(adapter, {
+        force: Boolean(flags.force),
+        softFail: flags.soft !== false
+      });
+      print(result, json, renderQuickCheck);
+      return;
+    }
+
+    if (command === "snooze") {
+      const version = typeof flags.version === "string" ? flags.version : undefined;
+      const result = await runtime.snooze(adapter, { version });
+      print(result, json, renderState);
       return;
     }
 
@@ -150,7 +186,7 @@ function print<T>(value: T, asJson: boolean, render: (value: T) => string): void
   console.log(render(value));
 }
 
-function renderCheck(result: Awaited<ReturnType<Awaited<ReturnType<typeof createRuntime>>["check"]>>): string {
+function renderCheck(result: UpdateCheckResult): string {
   return [
     `Component: ${result.state.componentName}`,
     `Repo: ${result.state.repo}`,
@@ -164,7 +200,7 @@ function renderCheck(result: Awaited<ReturnType<Awaited<ReturnType<typeof create
   ].join("\n");
 }
 
-function renderPlan(plan: Awaited<ReturnType<Awaited<ReturnType<typeof createRuntime>>["plan"]>>): string {
+function renderPlan(plan: UpdatePlan): string {
   return [
     `Plan for ${plan.componentName}`,
     `${plan.currentVersion} -> ${plan.targetVersion ?? "no-op"}`,
@@ -176,7 +212,7 @@ function renderPlan(plan: Awaited<ReturnType<Awaited<ReturnType<typeof createRun
   ].join("\n");
 }
 
-function renderApply(result: Awaited<ReturnType<Awaited<ReturnType<typeof createRuntime>>["apply"]>>): string {
+function renderApply(result: ApplyResult): string {
   return [
     `Status: ${result.status}`,
     `Decision: ${result.decision}`,
@@ -187,7 +223,7 @@ function renderApply(result: Awaited<ReturnType<Awaited<ReturnType<typeof create
   ].join("\n");
 }
 
-function renderRollback(result: Awaited<ReturnType<Awaited<ReturnType<typeof createRuntime>>["rollback"]>>): string {
+function renderRollback(result: RollbackResult): string {
   return [
     `Rollback ok: ${result.ok ? "yes" : "no"}`,
     `Target: ${result.targetVersion ?? "unknown"}`,
@@ -195,7 +231,7 @@ function renderRollback(result: Awaited<ReturnType<Awaited<ReturnType<typeof cre
   ].join("\n");
 }
 
-function renderState(state: Awaited<ReturnType<Awaited<ReturnType<typeof createRuntime>>["getState"]>>): string {
+function renderState(state: UpdateState): string {
   return [
     `Component: ${state.componentName}`,
     `Current: ${state.currentVersion ?? "unknown"}`,
@@ -206,21 +242,33 @@ function renderState(state: Awaited<ReturnType<Awaited<ReturnType<typeof createR
   ].join("\n");
 }
 
-function renderAudit(records: Awaited<ReturnType<Awaited<ReturnType<typeof createRuntime>>["getAudit"]>>): string {
+function renderAudit(records: AuditRecord[]): string {
   if (!records.length) return "No audit records.";
   return records
     .map((record) => `${record.timestamp} ${record.step} ${record.status} ${record.message}`)
     .join("\n");
 }
 
-function renderPolicy(policy: Awaited<ReturnType<Awaited<ReturnType<typeof createRuntime>>["getPolicy"]>>): string {
+function renderPolicy(policy: UpdatePolicy): string {
   return [
     `Mode: ${policy.mode}`,
     `Allowed levels: ${policy.allowedUpdateLevels?.join(", ") || "default"}`
   ].join("\n");
 }
 
-function renderBootstrap(result: Awaited<ReturnType<typeof bootstrapManifest>>): string {
+function renderQuickCheck(result: QuickCheckResult): string {
+  const lines = [`Status: ${result.status}`];
+  if (result.currentVersion) lines.push(`Current: ${result.currentVersion}`);
+  if (result.candidateVersion) lines.push(`Candidate: ${result.candidateVersion}`);
+  if (result.previousVersion) lines.push(`Upgraded from: ${result.previousVersion}`);
+  if (result.snoozeLevel !== undefined) lines.push(`Snooze level: ${result.snoozeLevel}`);
+  if (result.snoozeExpiresAt) lines.push(`Snooze expires: ${result.snoozeExpiresAt}`);
+  if (result.cachedAt) lines.push(`Cached at: ${result.cachedAt}`);
+  lines.push(`Message: ${result.message}`);
+  return lines.join("\n");
+}
+
+function renderBootstrap(result: { manifest: UpdateManifest; info: ResolvedManifestInfo }): string {
   return [
     `Source: ${result.info.source}`,
     `Preset: ${result.info.preset ?? "unknown"}`,
@@ -286,17 +334,19 @@ function createCliConfirm(): ConfirmHandler {
 function printUsage(): void {
   console.error([
     "Usage:",
-    "  update-kit check --manifest ./update.config.json [--json]",
+    "  update-kit check [--force] [--json]",
+    "  update-kit quick-check [--force] [--json]",
     "  update-kit bootstrap --cwd . [--json]",
-    "  update-kit plan --manifest ./update.config.json [--dry-run] [--json]",
-    "  update-kit apply --manifest ./update.config.json [--dry-run] [--decision update_once] [--json]",
-    "  update-kit rollback --manifest ./update.config.json [--version 1.2.3] [--json]",
-    "  update-kit state --manifest ./update.config.json [--json]",
-    "  update-kit audit --manifest ./update.config.json [--limit 20] [--json]",
-    "  update-kit policy --manifest ./update.config.json [--json]",
-    "  update-kit ignore --manifest ./update.config.json --version 1.2.3 [--json]",
-    "  update-kit unignore --manifest ./update.config.json --version 1.2.3 [--json]",
-    "  update-kit set-policy --manifest ./update.config.json --mode manual|patch|minor|all [--json]"
+    "  update-kit plan [--dry-run] [--json]",
+    "  update-kit apply [--dry-run] [--decision update_once] [--json]",
+    "  update-kit rollback [--version 1.2.3] [--json]",
+    "  update-kit snooze [--version 1.2.3] [--json]",
+    "  update-kit state [--json]",
+    "  update-kit audit [--limit 20] [--json]",
+    "  update-kit policy [--json]",
+    "  update-kit ignore --version 1.2.3 [--json]",
+    "  update-kit unignore --version 1.2.3 [--json]",
+    "  update-kit set-policy --mode manual|patch|minor|all [--json]"
   ].join("\n"));
 }
 

@@ -1,5 +1,7 @@
 export { defineAdapter, resolveAdapterContext, createDefaultCommandExecutor } from "./adapter.js";
 export { createFileAuditWriter, FileAuditWriter } from "./audit.js";
+export { createUpdateCheckCache, UpdateCheckCache } from "./cache.js";
+export { advanceSnooze, computeSnoozeExpiry, isSnoozeActive } from "./snooze.js";
 export { bootstrapManifest, detectHost, applyManifestOverrides } from "./autodetect.js";
 export { detectCurrentVersion, detectLocalCandidateVersion, detectUpdateCandidate, readVersionFromSource } from "./detector.js";
 export { executeInstall, buildInstallOperations } from "./installer.js";

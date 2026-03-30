@@ -1,6 +1,6 @@
 {
   "name": "update-kit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Production-grade, embeddable update orchestration framework with policy, verification, rollback, and auditability.",
   "keywords": [
     "update",
@@ -43,6 +43,8 @@
     "README.md",
     "update.config.example.json",
     "docs/INTEGRATION.md",
+    "docs/AGENT_INTEGRATION.md",
+    "docs/QUICK_START.md",
     "examples/node-ts"
   ],
   "scripts": {
